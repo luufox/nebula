@@ -287,6 +287,23 @@ func Main(c *config.C, configTest bool, buildVersion string, logger *logrus.Logg
 		dnsStart = dnsMain(l, pki.getCertState(), hostMap, c)
 	}
 
+	defaultCert := pki.getCertState().GetDefaultCertificate()
+
+	// Start proxy server to allow using the nebula IP as proxy server.
+	var proxyStart func()
+	serveSocks5Port := c.GetInt("socks5.port", 0)
+	if serveSocks5Port > 0 {
+		l.Debugln("Starting proxy server")
+		proxyStart = proxyMain(l, defaultCert.Networks()[0], c)
+	}
+
+	// Start forward server to allow using the nebula IP as forward server.
+	var forwardStart func()
+	if c.Get("forward") != nil {
+		l.Debugln("Starting forward server")
+		forwardStart = forwardMain(l, defaultCert.Networks()[0], c)
+	}
+
 	return &Control{
 		ifce,
 		l,
@@ -297,6 +314,8 @@ func Main(c *config.C, configTest bool, buildVersion string, logger *logrus.Logg
 		dnsStart,
 		lightHouse.StartUpdateWorker,
 		connManager.Start,
+		proxyStart,
+		forwardStart,
 	}, nil
 }
 

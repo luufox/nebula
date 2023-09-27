@@ -35,6 +35,8 @@ type Control struct {
 	dnsStart               func()
 	lighthouseStart        func()
 	connectionManagerStart func(context.Context)
+	proxyStart             func()
+	forwardStart           func()
 }
 
 type ControlHostInfo struct {
@@ -69,6 +71,12 @@ func (c *Control) Start() {
 	}
 	if c.lighthouseStart != nil {
 		c.lighthouseStart()
+	}
+	if c.proxyStart != nil {
+		go c.proxyStart()
+	}
+	if c.forwardStart != nil {
+		go c.forwardStart()
 	}
 
 	// Start reading packets.
