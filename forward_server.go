@@ -45,44 +45,61 @@ func reloadForward(l *logrus.Logger, vpnNet netip.Prefix, c *config.C) {
 	go startForward(l, vpnNet, c)
 }
 
-func newFwd(vpnNet netip.Prefix, m map[interface{}]interface{}) *fwd {
-	port, pok := m["port"].(int)
-	address, aok := m["address"].(string)
-	targets, tok := m["targets"].([]interface{})
+func newFwd(vpnNet netip.Prefix, cfg any) *fwd {
+	var (
+		portValue   any
+		address     string
+		addressSeen bool
+		targetValue any
+	)
 
-	rtargets := make([]string, 0, len(targets))
-	for _, t := range targets {
-		if t, ok := t.(string); ok {
-			rtargets = append(rtargets, t)
-		}
+	switch m := cfg.(type) {
+	case map[string]any:
+		portValue = m["port"]
+		targetValue = m["targets"]
+		address, addressSeen = m["address"].(string)
+	case map[interface{}]interface{}:
+		portValue = m["port"]
+		targetValue = m["targets"]
+		address, addressSeen = m["address"].(string)
+	default:
+		return nil
 	}
-	if !aok {
+
+	port, ok := toInt(portValue)
+	if !ok {
+		return nil
+	}
+	targets, ok := toStringSlice(targetValue)
+	if !ok {
+		return nil
+	}
+
+	if !addressSeen {
 		address = vpnNet.Addr().String()
 	}
 
-	if pok && tok {
-		return &fwd{
-			addr:    address + ":" + strconv.Itoa(port),
-			targets: rtargets,
-		}
+	return &fwd{
+		addr:    address + ":" + strconv.Itoa(port),
+		targets: targets,
 	}
-	return nil
 }
 
 func getForwardMapping(l *logrus.Logger, vpnNet netip.Prefix, c *config.C) (fwds []*fwd) {
 	f := c.Get("forward")
 	switch f := f.(type) {
+	case map[string]any:
+		if fwd := newFwd(vpnNet, f); fwd != nil {
+			fwds = append(fwds, fwd)
+		}
 	case map[interface{}]interface{}:
 		if fwd := newFwd(vpnNet, f); fwd != nil {
 			fwds = append(fwds, fwd)
 		}
-	case []interface{}:
+	case []any:
 		for _, v := range f {
-			m, ok := v.(map[interface{}]interface{})
-			if ok {
-				if fwd := newFwd(vpnNet, m); fwd != nil {
-					fwds = append(fwds, fwd)
-				}
+			if fwd := newFwd(vpnNet, v); fwd != nil {
+				fwds = append(fwds, fwd)
 			}
 		}
 	}
@@ -191,4 +208,38 @@ func tcpForward(client, target net.Conn) {
 	}
 	go forward(client, target)
 	go forward(target, client)
+}
+
+func toInt(v any) (int, bool) {
+	switch i := v.(type) {
+	case int:
+		return i, true
+	case int64:
+		return int(i), true
+	case uint64:
+		return int(i), true
+	case float64:
+		return int(i), true
+	default:
+		return 0, false
+	}
+}
+
+func toStringSlice(v any) ([]string, bool) {
+	switch targets := v.(type) {
+	case []string:
+		return targets, true
+	case []any:
+		out := make([]string, 0, len(targets))
+		for _, target := range targets {
+			s, ok := target.(string)
+			if !ok {
+				return nil, false
+			}
+			out = append(out, s)
+		}
+		return out, true
+	default:
+		return nil, false
+	}
 }
