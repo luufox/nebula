@@ -52,6 +52,7 @@ type Control struct {
 	sshStart               func()
 	statsStart             func()
 	dnsStart               func()
+	proxyStart             func()
 	lighthouseStart        func()
 	networkChangeStart     func(rebind func())
 	connectionManagerStart func(context.Context)
@@ -104,6 +105,9 @@ func (c *Control) Start() error {
 	}
 	if c.dnsStart != nil {
 		go c.dnsStart()
+	}
+	if c.proxyStart != nil {
+		go c.proxyStart()
 	}
 	if c.networkChangeStart != nil {
 		go c.networkChangeStart(c.RebindUDPServer)

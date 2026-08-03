@@ -210,8 +210,9 @@ punchy:
 #sshd:
   # Toggles the feature
   #enabled: true
-  # Host and port to listen on, port 22 is not allowed for your safety
-  #listen: 127.0.0.1:2222
+  # Host and port to listen on. Port 22 is permitted only on a Nebula IP encoded in this node's certificate.
+  # It requires sufficient OS privileges and is not allowed on wildcard, loopback, or public addresses.
+  #listen: 192.168.100.10:22
   # A file containing the ssh host private key to use
   # A decent way to generate one: ssh-keygen -t ed25519 -f ssh_host_ed25519_key -N "" < /dev/null
   #host_key: ./ssh_host_ed25519_key
@@ -230,6 +231,14 @@ punchy:
   # The directory is NOT automatically created.
   # Overriding this to "" is the same as "/" and will allow overwriting any path on the host.
   #sandbox_dir: /var/tmp/nebula-debug
+
+# SOCKS5 proxy. When enabled, it listens only on this host's first Nebula IP.
+# It supports SOCKS5 CONNECT and HTTP proxy requests but does not provide
+# authentication. Restrict access with Nebula firewall rules and enable it
+# only on a dedicated, trusted egress node.
+#socks5:
+  # Set a port between 1 and 65535 to enable the proxy. This is reloadable.
+  #port: 1080
 
 # EXPERIMENTAL: relay support for networks that can't establish direct connections.
 relay:

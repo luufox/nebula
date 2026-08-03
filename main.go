@@ -59,10 +59,10 @@ func Main(c *config.C, configTest bool, buildVersion string, l *slog.Logger, dev
 	if err != nil {
 		return nil, util.ContextualizeIfNeeded("Error while creating SSH server", err)
 	}
-	wireSSHReload(l, ssh, c)
+	wireSSHReload(l, ssh, pki, c)
 	var sshStart func()
 	if c.GetBool("sshd.enabled", false) {
-		sshStart, err = configSSH(l, ssh, c)
+		sshStart, err = configSSH(l, ssh, pki, c)
 		if err != nil {
 			l.Warn("Failed to configure sshd, ssh debugging will not be available", "error", err)
 			sshStart = nil
@@ -264,6 +264,11 @@ func Main(c *config.C, configTest bool, buildVersion string, l *slog.Logger, dev
 		return nil, nil
 	}
 
+	proxyStart, err := proxyMain(ctx, l, ifce.myVpnAddrs[0], c)
+	if err != nil {
+		return nil, util.ContextualizeIfNeeded("Failed to configure SOCKS5 proxy", err)
+	}
+
 	go ifce.emitStats(ctx, c.GetDuration("stats.interval", time.Second*10))
 
 	attachCommands(l, c, ssh, ifce)
@@ -279,6 +284,7 @@ func Main(c *config.C, configTest bool, buildVersion string, l *slog.Logger, dev
 		sshStart:               sshStart,
 		statsStart:             stats.Start,
 		dnsStart:               ds.Start,
+		proxyStart:             proxyStart,
 		lighthouseStart:        lightHouse.StartUpdateWorker,
 		networkChangeStart:     networkChanges.Start,
 		connectionManagerStart: connManager.Start,

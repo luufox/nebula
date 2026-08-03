@@ -57,10 +57,10 @@ type sshDeviceInfoFlags struct {
 	Pretty bool
 }
 
-func wireSSHReload(l *slog.Logger, ssh *sshd.SSHServer, c *config.C) {
+func wireSSHReload(l *slog.Logger, ssh *sshd.SSHServer, pki *PKI, c *config.C) {
 	c.RegisterReloadCallback(func(c *config.C) {
 		if c.GetBool("sshd.enabled", false) {
-			sshRun, err := configSSH(l, ssh, c)
+			sshRun, err := configSSH(l, ssh, pki, c)
 			if err != nil {
 				l.Error("Failed to reconfigure the sshd", "error", err)
 				ssh.Stop()
@@ -78,20 +78,17 @@ func wireSSHReload(l *slog.Logger, ssh *sshd.SSHServer, c *config.C) {
 // updates the passed-in SSHServer. On success, it returns a function
 // that callers may invoke to run the configured ssh server. On
 // failure, it returns nil, error.
-func configSSH(l *slog.Logger, ssh *sshd.SSHServer, c *config.C) (func(), error) {
+func configSSH(l *slog.Logger, ssh *sshd.SSHServer, pki *PKI, c *config.C) (func(), error) {
 	listen := c.GetString("sshd.listen", "")
 	if listen == "" {
 		return nil, fmt.Errorf("sshd.listen must be provided")
 	}
 
-	_, port, err := net.SplitHostPort(listen)
-	if err != nil {
-		return nil, fmt.Errorf("invalid sshd.listen address: %s", err)
-	}
-	if port == "22" {
-		return nil, fmt.Errorf("sshd.listen can not use port 22")
+	if err := validateSSHListen(listen, pki); err != nil {
+		return nil, err
 	}
 
+	var err error
 	hostKeyPathOrKey := c.GetString("sshd.host_key", "")
 	if hostKeyPathOrKey == "" {
 		return nil, fmt.Errorf("sshd.host_key must be provided")
@@ -196,6 +193,31 @@ func configSSH(l *slog.Logger, ssh *sshd.SSHServer, c *config.C) (func(), error)
 	}
 
 	return runner, nil
+}
+
+// validateSSHListen only permits the privileged SSH port on an address
+// assigned to this Nebula node. This prevents the management server from
+// accidentally being exposed through 0.0.0.0:22 or a public interface.
+func validateSSHListen(listen string, pki *PKI) error {
+	host, port, err := net.SplitHostPort(listen)
+	if err != nil {
+		return fmt.Errorf("invalid sshd.listen address: %s", err)
+	}
+	if port != "22" {
+		return nil
+	}
+
+	listenAddr, err := netip.ParseAddr(host)
+	if err != nil {
+		return fmt.Errorf("sshd.listen on port 22 must use a local Nebula IP")
+	}
+	for _, vpnAddr := range pki.getCertState().myVpnAddrs {
+		if listenAddr == vpnAddr {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("sshd.listen on port 22 must use a local Nebula IP")
 }
 
 func attachCommands(l *slog.Logger, c *config.C, ssh *sshd.SSHServer, f *Interface) {
